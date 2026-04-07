@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>GLSL-to-C++ Layout Generator (std430)</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; padding: 20px; margin: 0; }
+        h1 { color: #4a9eff; text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        .main-container { display: flex; gap: 20px; width: 100%; box-sizing: border-box; align-items: flex-start; }
+        .panel { flex: 1; display: flex; flex-direction: column; gap: 10px; background: #1e1e1e; padding: 15px; border-radius: 8px; border: 1px solid #333; min-width: 0; }
+        .reference-box { background: #252525; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #444; width: 100%; box-sizing: border-box; }
+        .type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin-top: 10px; }
+        .type-item { background: #333; padding: 8px; border-radius: 4px; border-left: 3px solid #ff9d00; font-size: 11px; }
+
+        /* Modified container for the entire GLSL block to manage inner spacing */
+        .glsl-input-block-wrapper {
+            border: 1px solid #444; /* Outer border for the whole block */
+            border-radius: 4px;
+            overflow: hidden; /* Ensures child borders don't exceed parent radius */
+            margin-bottom: 10px; /* Space below the whole block */
+        }
+
+        /* Styles for the GLSL-like layout header/footer */
+        .glsl-block-header, .glsl-block-footer {
+            background: #2d2d2d;
+            padding: 8px 12px;
+            font-family: monospace;
+            font-weight: bold;
+            color: #dcdcdc;
+            display: flex;
+            align-items: center;
+            /* Remove individual borders - parent wrapper handles it */
+            border: none;
+            border-radius: 0; /* No radius on these directly */
+        }
+        .glsl-block-header select,
+        .glsl-block-header input[type="text"] {
+            background: #1e1e1e;
+            border: 1px solid #555;
+            color: #4a9eff;
+            padding: 4px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+            font-family: monospace;
+            margin: 0 5px;
+        }
+        .glsl-block-header input[type="text"] { flex-grow: 1; }
+
+        .code-container {
+            position: relative;
+            width: 100%;
+            /* Remove margin-top/bottom here to prevent gaps */
+            margin-top: 0;
+            margin-bottom: 0;
+            border: none; /* No border on code-container itself */
+        }
+
+        textarea {
+            height: 320px;
+            background: #2d2d2d;
+            color: #afff92;
+            /* Crucial: No borders on textarea itself, or top/bottom margins */
+            border: none;
+            padding: 10px;
+            font-family: 'Consolas', monospace;
+            font-size: 14px;
+            resize: vertical;
+            width: 100%;
+            box-sizing: border-box;
+            display: block;
+            line-height: 1.4;
+            outline: none;
+            border-radius: 0;
+            /* Ensure no extra spacing */
+            margin: 0;
+        }
+        pre { background: #000; padding: 15px; border-radius: 4px; border: 1px solid #444; color: #dcdcdc; font-family: 'Consolas', monospace; font-size: 13px; overflow-x: auto; margin: 0; min-height: 100px; line-height: 1.4; }
+        #visual { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; background: #333; padding: 12px; border-radius: 4px; }
+        .cell { height: 65px; display: flex; align-items: center; justify-content: center; font-size: 11px; text-align: center; border-radius: 3px; color: white; text-shadow: 1px 1px 2px black; border: 1px solid rgba(255,255,255,0.1); word-break: break-all; padding: 2px; box-shadow: inset 0 0 10px rgba(0,0,0,0.2); }
+        .padding { background: #442222 !important; color: #ff8888; border: 1px dashed #aa4444; text-shadow: none; opacity: 0.6; }
+        .btn-group { display: flex; gap: 10px; margin: 10px 0; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s; color: #000; font-size: 13px; }
+        .btn-gen { background: #4a9eff; color: white; }
+        .btn-opt { background: #ff9d00; }
+        .btn-reset { background: #555; color: white; }
+        .btn-copy { position: absolute; top: 8px; right: 8px; padding: 6px 12px; font-size: 11px; background: #444; color: white; opacity: 0.9; z-index: 10; border: 1px solid #666; border-radius: 4px; cursor: pointer; }
+        button:hover { filter: brightness(1.2); }
+        h3 { margin: 0; color: #4a9eff; font-size: 15px; text-transform: uppercase; letter-spacing: 1px; }
+        .warn { color: #ff4444; font-weight: bold; margin-top: 5px; display: block; }
+    </style>
+</head>
+<body>
+
+    <h1>
+    <a href="https://github.com/mojocorp/glsl-to-cpp-layout-generator"
+       style="text-decoration: none; color: inherit;">
+       GLSL Shader to C++ Layout Generator
+    </a>
+    </h1>
+
+    <div class="reference-box">
+        <h3 style="color: #ff9d00;">Type Reference (std430)</h3>
+        <div class="type-grid">
+            <div class="type-item"><b>float/int/uint</b><br>Align: 4, Size: 4</div>
+            <div class="type-item"><b>[i/u]vec2/dvec2</b><br>Align: 8, Size: 8/16</div>
+            <div class="type-item"><b>[i/u]vec3/4</b><br>Align: 16, Size: 12/16</div>
+            <div class="type-item"><b>dvec3/4</b><br>Align: 32, Size: 24/32</div>
+            <div class="type-item"><b>double</b><br>Align: 8, Size: 8</div>
+            <div class="type-item"><b>mat3/4</b><br>Align: 16, Size: 48/64</div>
+        </div>
+    </div>
+    <div class="main-container">
+        <div class="panel">
+            <h3>1. GLSL Shader Block</h3>
+            <div class="glsl-input-block-wrapper"> <!-- New wrapper for the entire GLSL block -->
+                <div class="glsl-block-header">
+                    layout(
+                    <select id="layoutMode" onchange="process()">
+                        <option value="std430">std430</option>
+                        <option value="std140">std140</option>
+                    </select>
+                    ) 
+                    <input type="text" id="structName" value="ShadertoyParams" oninput="process()" placeholder="Struct Name">
+                    {
+                </div>
+                <div class="code-container">
+                    <button class="btn-copy" onclick="copyShaderInput()">Copy GLSL</button>
+                    <textarea id="input" oninput="process()" spellcheck="false">    vec3  iResolution;           // Viewport resolution (pixels)
+    float iTime;                 // Playback time (s)
+    float iTimeDelta;             // Last frame render time
+    int   iFrame;                // Frame index
+    float iSampleRate;           // Audio sample rate
+    vec4  iMouse;                // Mouse interaction
+    vec4  iDate;                 // Year, month, day, time
+    float iChannelTime[4];       // Channel times
+    vec3  iChannelResolution[4]; // Channel resolutions</textarea>
+                </div>
+                <div class="glsl-block-footer">
+                    };
+                </div>
+            </div> <!-- End glsl-input-block-wrapper -->
+
+            <div class="btn-group">
+                <button class="btn-gen" onclick="process()">▶ Refresh</button>
+                <button class="btn-opt" onclick="optimize()">🪄 Optimize</button>
+                <button class="btn-reset" onclick="resetDefaults()">↺ Reset</button>
+            </div>
+            <h3>2. C++ Aligned Struct</h3>
+            <div class="code-container">
+                <button class="btn-copy" onclick="copyText('cppOut')">Copy C++</button>
+                <pre id="cppOut"></pre>
+            </div>
+        </div>
+        <div class="panel">
+            <h3>3. Memory Map (16-byte rows)</h3>
+            <div id="visual"></div>
+            <div id="stats" style="background:#252525; padding:15px; border-radius:4px; font-size:14px; margin-top:10px; border-left: 4px solid #4a9eff; line-height: 1.6;"></div>
+        </div>
+    </div>
+<script>
+const TYPES = {
+    'float': { size: 4, alignment: 4, cppAlignment: 4, cppType: 'float' },
+    'int':   { size: 4, alignment: 4, cppAlignment: 4, cppType: 'int32_t' },
+    'uint':  { size: 4, alignment: 4, cppAlignment: 4, cppType: 'uint32_t' },
+    'double':{ size: 8, alignment: 8, cppAlignment: 8, cppType: 'double' },
+    'vec2':  { size: 8, alignment: 8, cppAlignment: 8, cppType: 'float', numElements: 2 },
+    'ivec2': { size: 8, alignment: 8, cppAlignment: 8, cppType: 'int32_t', numElements: 2 },
+    'uvec2': { size: 8, alignment: 8, cppAlignment: 8, cppType: 'uint32_t', numElements: 2 },
+    'dvec2': { size: 16, alignment: 8, cppAlignment: 8, cppType: 'double', numElements: 2 }, // dvec2
+    'vec3':  { size: 12, alignment: 16, cppAlignment: 4, cppType: 'float', numElements: 3 },
+    'ivec3': { size: 12, alignment: 16, cppAlignment: 4, cppType: 'int32_t', numElements: 3 },
+    'uvec3': { size: 12, alignment: 16, cppAlignment: 4, cppType: 'uint32_t', numElements: 3 },
+    'dvec3': { size: 24, alignment: 32, cppAlignment: 8, cppType: 'double', numElements: 3 }, // dvec3
+    'vec4':  { size: 16, alignment: 16, cppAlignment: 4, cppType: 'float', numElements: 4 },
+    'ivec4': { size: 16, alignment: 16, cppAlignment: 4, cppType: 'int32_t', numElements: 4 },
+    'uvec4': { size: 16, alignment: 16, cppAlignment: 4, cppType: 'uint32_t', numElements: 4 },
+    'dvec4': { size: 32, alignment: 32, cppAlignment: 8, cppType: 'double', numElements: 4 }, // dvec4
+    'mat3':  { size: 48, alignment: 16, cppAlignment: 4, cppType: 'float', numElements: 12 },
+    'mat4':  { size: 64, alignment: 16, cppAlignment: 4, cppType: 'float', numElements: 16 }
+};
+const SHADERTOY_DEFAULT = `vec3  iResolution;           // Viewport resolution (pixels)
+float iTime;                 // Playback time (s)
+float iTimeDelta;             // Last frame render time
+int   iFrame;                // Frame index
+float iSampleRate;           // Audio sample rate
+vec4  iMouse;                // Mouse interaction
+vec4  iDate;                 // Year, month, day, time
+float iChannelTime[4];       // Channel times
+vec3  iChannelResolution[4]; // Channel resolutions`;
+
+function getDistinctColor(i) { return `hsl(${(i * 137.5) % 360}, 60%, 40%)`; }
+function resetDefaults() { document.getElementById('input').value = SHADERTOY_DEFAULT; process(); }
+function copyText(id) {
+    const el = document.getElementById(id);
+    navigator.clipboard.writeText(el.tagName === 'TEXTAREA' ? el.value : el.textContent);
+    const btn = event.currentTarget; const old = btn.innerText; btn.innerText = "Copied!";
+    setTimeout(() => btn.innerText = old, 1500);
+}
+function parseLines() {
+    return document.getElementById('input').value.split('\n').map(line => {
+        let l = line.trim(); if (!l || l.startsWith('//')) return null;
+        let comment = ""; const cIdx = l.indexOf('//');
+        if (cIdx !== -1) { comment = l.substring(cIdx); l = l.substring(0, cIdx).trim(); }
+        let arrayCount = 1; const arrayMatch = l.match(/\[(\d+)\]/);
+        if (arrayMatch) { arrayCount = parseInt(arrayMatch[1]); l = l.replace(/\[\d+\]/, "").trim(); }
+        if (l.endsWith(';')) l = l.slice(0, -1).trim();
+        const pts = l.split(/\s+/); if (pts.length < 2) return null;
+        const type = pts[0]; const name = pts[1]; const info = TYPES[type] || TYPES['float'];
+        return { type, name, comment, info, arrayCount };
+    }).filter(x => x);
+}
+function optimize() {
+    const area = document.getElementById('input'); const items = parseLines(); if (!items.length) return;
+    const mode = document.getElementById('layoutMode').value;
+    items.sort((a, b) => {
+        const getAlign = (x) => {
+            let align = x.info.alignment;
+            if (mode === 'std140') {
+                if (x.arrayCount > 1 || x.type.includes('mat')) align = 16;
+            }
+            return align;
+        };
+        return getAlign(b) - getAlign(a);
+    });
+    const maxT = Math.max(...items.map(p => (p.type + (p.arrayCount > 1 ? `[${p.arrayCount}]` : "")).length));
+    const maxN = Math.max(...items.map(p => p.name.length));
+    const newVal = items.map(p => {
+        const t = (p.type + (p.arrayCount > 1 ? `[${p.arrayCount}]` : "")).padEnd(maxT + 1);
+        return `${t}${(p.name + ";").padEnd(maxN + 2)}${p.comment}`.trim();
+    }).join('\n');
+    area.focus(); area.select(); document.execCommand('insertText', false, newVal); process();
+}
+function process() {
+    const items = parseLines(); const visual = document.getElementById('visual');
+    const cppOut = document.getElementById('cppOut'); const stats = document.getElementById('stats');
+    const structName = document.getElementById('structName').value.trim() || "GpuParams";
+    const mode = document.getElementById('layoutMode').value; visual.innerHTML = '';
+    let offset = 0; let cppLines = [`struct ${structName} {`]; let memory = []; let varCounter = 0;
+    items.forEach(item => {
+        let align = item.info.alignment;
+        if (mode === 'std140') { if (item.arrayCount > 1 || item.type.includes('mat')) align = 16; }
+
+        // Adjust alignment for dvecs in std430 mode to be 16-byte aligned.
+        // This is a common practice for double vectors in some std430 implementations,
+        // although technically dvec3 and dvec4 could align to their scalar size (8).
+        // For broad compatibility, sticking to 16 for dvec2, and 32 for dvec3/4 (which naturally aligns to 16) is safer.
+        if (mode === 'std430' && (item.type.startsWith('dvec') && item.info.alignment < 16)) {
+            align = 16;
+        }
+
+        while (offset % align !== 0) { memory.push({ name: 'gap', type: 'padding', color: '#442222' }); offset += 4; }
+        const needsAlign = align > item.info.cppAlignment;
+        const prefix = needsAlign ? `alignas(${align}) ` : '            ';
+        let size = item.info.size * item.arrayCount;
+        if (mode === 'std140' && item.arrayCount > 1) {
+            // std140 array elements are always rounded to 16-byte alignment
+            size = Math.ceil(item.info.size / 16) * 16 * item.arrayCount;
+        }
+        const totalElems = (item.info.numElements || 1) * item.arrayCount;
+        cppLines.push(`    ${prefix}${item.info.cppType} ${item.name}${totalElems > 1 ? `[${totalElems}]` : ""};${item.comment ? " " + item.comment : ""}`);
+        const color = getDistinctColor(varCounter++);
+        for (let i = 0; i < Math.ceil(size / 4); i++) memory.push({ name: item.name, type: 'data', color });
+        offset += size;
+    });
+    const finalSize = Math.ceil(offset / 16) * 16;
+    while (memory.length < (finalSize / 4)) memory.push({ name: 'tail', type: 'padding', color: '#442222' });
+    cppLines.push("};", `\nstatic_assert(sizeof(${structName}) == ${finalSize});`);
+    cppOut.textContent = cppLines.join('\n');
+    memory.forEach((m, i) => {
+        const div = document.createElement('div'); div.className = `cell ${m.type}`; div.style.backgroundColor = m.color;
+        div.innerHTML = `<b>${m.name}</b><br><span style="opacity:0.8; font-size:9px;">+${i*4}</span>`; visual.appendChild(div);
+    });
+    const wasted = (memory.filter(m => m.type === 'padding').length * 4);
+    stats.innerHTML = `<b>Mode:</b> ${mode} | <b>Padded Size:</b> ${finalSize} bytes | <b>Wasted:</b> ${wasted} bytes` + (finalSize > 128 && mode === 'std430' ? `<br><span class="warn">⚠️ EXCEEDS 128-BYTE PUSH_CONSTANT LIMIT</span>` : "");
+}
+process();
+</script>
+</body>
+</html>
